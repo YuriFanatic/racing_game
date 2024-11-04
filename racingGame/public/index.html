@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Racing Game</title>
+    <style>
+        body {background-color: mistyrose;}
+        canvas {
+            border: 2px solid white;
+            padding-left: 0;
+            padding-right: 0;
+            margin-left: auto;
+            margin-right: auto;
+            display: block;
+            width: 800px;
+        }
+    </style>
+</head>
+<body>
+    <br>
+    <br>
+    <h1 style="text-align: center;">Cool Racing Game!!</h1>
+    <br>
+    <br>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        
+        // Load car images
+        const carImages = {
+            straight: new Image(),
+            left: new Image(),
+            right: new Image()
+        };
+
+        // Set the source for the images
+        carImages.straight.src = 'car_straight.png'; // Replace with your image path
+        carImages.left.src = 'car_left.png';       // Replace with your image path
+        carImages.right.src = 'car_right.png';
+
+        // Game states
+        const STATE_START = 1;
+        const STATE_RESTART = 2;
+        const STATE_PLAY = 3;
+        const STATE_GAMEOVER = 4;
+
+        var state = STATE_START;
+        var gamePaused = false;
+
+        // Game variables
+        let carPos = 0;
+        let carSpeed = 0;
+        let trackCurvature = 0;
+        let playerCurvature = 0;
+        let distanceTravelled = 0;
+        const track = [
+        { curvature: 0, length: 200 },
+        { curvature: 1, length: 300 },
+        { curvature: 0, length: 400 },
+        { curvature: -1, length: 100 },
+        { curvature: 0, length: 200 },
+        { curvature: -1, length: 100 },
+        { curvature: 1, length: 100 },
+        { curvature: 0, length: 200 }
+        ];
+        let totalTrackDistance = track.reduce((sum, section) => sum + section.length, 0);
+
+        // Input handling
+        const keys = {
+        ArrowUp: false,
+        ArrowLeft: false,
+        ArrowRight: false
+        };
+
+        window.addEventListener('keydown', (e) => {
+        if (e.code in keys) keys[e.code] = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+        if (e.code in keys) keys[e.code] = false;
+        });
+
+        function update(elapsedTime) {
+            // Speed control
+            if (keys.ArrowUp) carSpeed += 0.1;
+            else carSpeed -= 0.01;
+
+            if (carSpeed < 0) carSpeed = 0;
+            if (carSpeed > 1) carSpeed = 1;
+
+            // Steering control
+            let steeringFactor = 0.005;  // Adjust this value to control how sharp the car steers
+            if (keys.ArrowLeft) playerCurvature -= steeringFactor;
+            if (keys.ArrowRight) playerCurvature += steeringFactor;
+
+            distanceTravelled += carSpeed * 200 * elapsedTime; //moves car forwards
+
+            // loops track
+            if (distanceTravelled >= totalTrackDistance) {
+                distanceTravelled -= totalTrackDistance;
+            }
+
+            let offset = 0;
+            let currentTrackSection = 0;
+
+            // identifies current track segment
+            while (currentTrackSection < track.length && offset <= distanceTravelled) {
+                offset += track[currentTrackSection].length;
+                currentTrackSection++;
+            }
+
+            //bends track
+            const targetCurvature = track[currentTrackSection - 1].curvature;
+            const curveDifference = (targetCurvature - trackCurvature) * elapsedTime * carSpeed;
+            trackCurvature += curveDifference;
+
+            // slows down on grass
+            if (Math.abs(playerCurvature - trackCurvature) >= 0.6) {
+            carSpeed -= 0.2;
+            if (carSpeed < 0) carSpeed = 0; // Ensures speed does not go negative
+            }
+
+        }
+
+
+        function draw() {
+            // Draw sky
+            const skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height / 2);
+            skyGradient.addColorStop(0, 'indianred'); // Color at the top
+            skyGradient.addColorStop(1, 'lightpink'); // Color at the bottom
+            ctx.fillStyle = skyGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height / 2);
+
+            // Draw sun that interpolates horizontally with the road
+            let sunX = canvas.width / 2 - (trackCurvature) * canvas.width / 20;
+            ctx.fillStyle = 'gold';
+            ctx.beginPath();
+            ctx.arc(sunX, canvas.height / 2, 30, 0, Math.PI * 2); // Draw sun
+            ctx.fill();
+
+            // Draw road and grass with rumble strips
+            for (let y = 0; y < canvas.height / 2; y++) {
+                let perspective = y / (canvas.height / 2);
+                let roadWidth = 0.1 + perspective * 0.6;
+                roadWidth *= 0.5;
+
+                let middle = 0.5 + trackCurvature * Math.pow((1.0 - perspective), 3);
+                let leftGrass = (middle - roadWidth * 1.2) * canvas.width;
+                let rightGrass = (middle + roadWidth * 1.2) * canvas.width;
+                let roadLeft = (middle - roadWidth) * canvas.width;
+                let roadRight = (middle + roadWidth) * canvas.width;
+
+
+                // Create the illusion of speed by shifting the grass segments
+                let grassSpeedFactor = 10; 
+                let movingY = y + (distanceTravelled * grassSpeedFactor) % 20;  // Moving down effect
+
+                // Calculate alternating grass segments, with larger segments as they get closer
+                let grassFrequency = 20 * Math.pow(1 - perspective, 3); // Larger segments closer
+                let grassColor = Math.sin(grassFrequency + distanceTravelled * 0.1) > 0 ? 'green' : 'darkgreen';
+
+                // Draw the grass
+                ctx.fillStyle = grassColor;
+                ctx.fillRect(0, canvas.height / 2 + y, leftGrass, 1);
+                ctx.fillRect(rightGrass, canvas.height / 2 + y, canvas.width - rightGrass, 1);
+
+                // Draw rumble strips between the road and grass on both sides
+                let rumbleWidth = 4 * (1 + perspective * 7);
+                ctx.fillStyle = (Math.sin(grassFrequency + distanceTravelled * 0.3) > 0) ? 'red' : 'white';
+
+                // draw rumble strips
+                ctx.fillRect(roadLeft - rumbleWidth, canvas.height / 2 + y, rumbleWidth, 1);
+                ctx.fillRect(roadRight, canvas.height / 2 + y, rumbleWidth, 1); 
+
+                // Draw the road
+                ctx.fillStyle = 'grey';
+                ctx.fillRect(roadLeft, canvas.height / 2 + y, roadRight - roadLeft, 1);
+            }
+
+
+            // Draw car
+            let carX = canvas.width / 2 - 20 + (playerCurvature - trackCurvature) * canvas.width / 2;
+
+            if (keys.ArrowLeft) {
+                ctx.drawImage(carImages.left, carX, canvas.height - 30, 40, 20);
+            } else if (keys.ArrowRight) {
+                ctx.drawImage(carImages.right, carX, canvas.height - 30, 40, 20);
+            } else {
+                ctx.drawImage(carImages.straight, carX, canvas.height - 30, 40, 20);
+            }
+        }
+
+        let lastTime = 0;
+        function gameLoop(timestamp) {
+            const elapsedTime = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            update(elapsedTime);
+            draw();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        requestAnimationFrame(gameLoop);
+    </script>
+    <p style="text-align: center;">use arrow keys to drive!</p>
+</body>
+</html>
